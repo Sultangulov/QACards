@@ -4,10 +4,18 @@ import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
 object FileImporter {
+	data class ParsedCard(
+		val question: String,
+		val answer: String,
+		val section: String? = null,
+		val examplesJson: String? = null
+	)
+
 	fun readText(context: Context, uri: Uri): String {
 		val resolver: ContentResolver = context.contentResolver
 		resolver.openInputStream(uri).use { input ->
@@ -16,17 +24,24 @@ object FileImporter {
 		}
 	}
 
-	fun parseCsv(text: String): List<Pair<String, String>> {
+	fun parseCsv(text: String): List<ParsedCard> {
 		return text.lineSequence()
 			.filter { it.isNotBlank() }
 			.map { line ->
 				val parts = splitCsvLine(line)
 				val q = parts.getOrNull(0)?.trim().orEmpty()
 				val a = parts.getOrNull(1)?.trim().orEmpty()
-				q to a
+				val section = parts.getOrNull(2)?.trim().takeIf { !it.isNullOrEmpty() }
+				val examplesRaw = parts.getOrNull(3)?.trim().takeIf { !it.isNullOrEmpty() }
+				val examplesJson = examplesRaw?.let { tryWrapExamples(it) }
+				ParsedCard(q, a, section, examplesJson)
 			}
-			.filter { it.first.isNotBlank() && it.second.isNotBlank() }
+			.filter { it.question.isNotBlank() && it.answer.isNotBlank() }
 			.toList()
+	}
+
+	private fun tryWrapExamples(raw: String): String {
+		return if (raw.trim().startsWith("[")) raw else JSONArray().put(raw).toString()
 	}
 
 	private fun splitCsvLine(line: String): List<String> {
@@ -54,15 +69,29 @@ object FileImporter {
 		return result
 	}
 
-	fun parseJson(text: String): List<Pair<String, String>> {
+	fun parseJson(text: String): List<ParsedCard> {
 		val arr = JSONArray(text)
-		val res = mutableListOf<Pair<String, String>>()
+		val res = mutableListOf<ParsedCard>()
 		for (i in 0 until arr.length()) {
 			val obj = arr.getJSONObject(i)
-			val q = obj.optString("question").trim()
+			val q = obj.optString("question", obj.optString("prompt")).trim()
 			val a = obj.optString("answer").trim()
-			if (q.isNotBlank() && a.isNotBlank()) res.add(q to a)
+			val section = obj.optString("section").trim().takeIf { it.isNotEmpty() }
+			val examplesJson = parseExamples(obj)
+			if (q.isNotBlank() && a.isNotBlank()) res.add(ParsedCard(q, a, section, examplesJson))
 		}
 		return res
+	}
+
+	private fun parseExamples(obj: JSONObject): String? {
+		if (obj.has("examples")) {
+			val ex = obj.get("examples")
+			return when (ex) {
+				is JSONArray -> ex.toString()
+				is String -> JSONArray().put(ex).toString()
+				else -> null
+			}
+		}
+		return null
 	}
 }

@@ -11,6 +11,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.interview.cards.data.Card
+import com.interview.cards.data.DeckWithDue
 import com.interview.cards.importer.FileImporter
 import com.interview.cards.navigation.Routes
 import com.interview.cards.repository.CardRepository
@@ -23,9 +24,7 @@ class MainActivity : ComponentActivity() {
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		repo = CardRepository(this)
-		setContent {
-			App(repo)
-		}
+		setContent { App(repo) }
 	}
 }
 
@@ -35,33 +34,37 @@ fun App(repo: CardRepository) {
 	val scope = rememberCoroutineScope()
 	val context = LocalContext.current
 	var currentCard by remember { mutableStateOf<Card?>(null) }
+	var currentDeckId by remember { mutableStateOf<Long?>(null) }
+	var decks by remember { mutableStateOf<List<DeckWithDue>>(emptyList()) }
+
+	LaunchedEffect(Unit) {
+		decks = repo.getDecksWithDue()
+	}
 
 	MaterialTheme {
 		Surface {
 			NavHost(navController = navController, startDestination = Routes.HOME) {
 				composable(Routes.HOME) {
 					HomeScreen(
-						onStartStudy = {
+						decks = decks,
+						onOpenDeck = { deckId ->
+							currentDeckId = deckId
 							scope.launch {
-								currentCard = repo.getNextDue(null)
+								currentCard = repo.getNextDue(deckId)
 								navController.navigate(Routes.STUDY)
 							}
 						},
 						onImportFile = { uri ->
 							scope.launch {
 								try {
-									val text = FileImporter.readText(context = context, uri)
-									val trimmed = text.trimStart()
-									val pairs = try {
+									val text = FileImporter.readText(context, uri)
+									val parsed = run {
+										val trimmed = text.trimStart()
 										if (trimmed.startsWith("[")) FileImporter.parseJson(text) else FileImporter.parseCsv(text)
-									} catch (_: Exception) {
-										// Fallback to CSV if JSON parse failed
-										FileImporter.parseCsv(text)
 									}
-									repo.importCards(deckName = "Imported", pairs = pairs)
-								} catch (_: Exception) {
-									// TODO: surface error to user
-								}
+									repo.importParsedCards(defaultDeckName = "Imported", cards = parsed)
+									decks = repo.getDecksWithDue()
+								} catch (_: Exception) {}
 							}
 						}
 					)
@@ -72,13 +75,13 @@ fun App(repo: CardRepository) {
 						onAgain = { card ->
 							scope.launch {
 								repo.grade(card, good = false)
-								currentCard = repo.getNextDue(null)
+								currentCard = repo.getNextDue(currentDeckId)
 							}
 						},
 						onGood = { card ->
 							scope.launch {
 								repo.grade(card, good = true)
-								currentCard = repo.getNextDue(null)
+								currentCard = repo.getNextDue(currentDeckId)
 							}
 						}
 					)

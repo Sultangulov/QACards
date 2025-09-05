@@ -4,6 +4,8 @@ import android.content.Context
 import com.interview.cards.data.AppDatabase
 import com.interview.cards.data.Card
 import com.interview.cards.data.Deck
+import com.interview.cards.data.DeckWithDue
+import com.interview.cards.importer.FileImporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.max
@@ -13,17 +15,31 @@ class CardRepository(context: Context) {
 	private val deckDao = db.deckDao()
 	private val cardDao = db.cardDao()
 
+	suspend fun getDecksWithDue(): List<DeckWithDue> = withContext(Dispatchers.IO) {
+		deckDao.getAllWithDue(System.currentTimeMillis())
+	}
+
 	suspend fun getOrCreateDeck(name: String): Deck = withContext(Dispatchers.IO) {
 		deckDao.findByName(name) ?: Deck(name = name).let { it.copy(id = deckDao.insert(it)) }
 	}
 
-	suspend fun importCards(deckName: String, pairs: List<Pair<String, String>>) = withContext(Dispatchers.IO) {
-		val deck = getOrCreateDeck(deckName)
+	suspend fun importParsedCards(defaultDeckName: String, cards: List<FileImporter.ParsedCard>) = withContext(Dispatchers.IO) {
 		val now = System.currentTimeMillis()
-		val cards = pairs.map { (q, a) ->
-			Card(deckId = deck.id, question = q.trim(), answer = a.trim(), intervalDays = 0, nextReviewAt = now)
+		val deckCache = mutableMapOf<String, Deck>()
+		val toInsert = cards.map { pc ->
+			val deckName = pc.section ?: defaultDeckName
+			val deck = deckCache.getOrPut(deckName) { deckDao.findByName(deckName) ?: Deck(name = deckName).let { it.copy(id = deckDao.insert(it)) } }
+			Card(
+				deckId = deck.id,
+				question = pc.question,
+				answer = pc.answer,
+				section = pc.section,
+				examplesJson = pc.examplesJson,
+				intervalDays = 0,
+				nextReviewAt = now
+			)
 		}
-		cardDao.insertAll(cards)
+		cardDao.insertAll(toInsert)
 	}
 
 	suspend fun getNextDue(deckId: Long?): Card? = withContext(Dispatchers.IO) {

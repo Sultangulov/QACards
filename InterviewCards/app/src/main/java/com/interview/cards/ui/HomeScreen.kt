@@ -1,57 +1,65 @@
 package com.interview.cards.ui
 
-import android.app.Activity
-import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.interview.cards.data.DeckWithDue
 
 @Composable
 fun HomeScreen(
-	onStartStudy: () -> Unit,
+	decks: List<DeckWithDue>,
+	onOpenDeck: (Long) -> Unit,
 	onImportFile: (Uri) -> Unit
 ) {
-	val context = LocalContext.current
 	var lastImportOk by remember { mutableStateOf(false) }
 	val launcher = rememberLauncherForActivityResult(
 		contract = ActivityResultContracts.OpenDocument(),
-		onResult = { uri ->
-			if (uri != null) {
-				(context as? Activity)?.contentResolver?.takePersistableUriPermission(
-					uri,
-					Intent.FLAG_GRANT_READ_URI_PERMISSION
-				)
-				onImportFile(uri)
-				lastImportOk = true
-			}
-		}
+		onResult = { uri -> if (uri != null) { onImportFile(uri); lastImportOk = true } }
 	)
 
-	Column(
-		modifier = Modifier.fillMaxSize().padding(24.dp),
-		horizontalAlignment = Alignment.CenterHorizontally,
-		verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
-	) {
-		Button(onClick = onStartStudy) { Text("Начать обучение") }
-		Button(onClick = {
-			launcher.launch(arrayOf("text/*", "application/json", "text/csv"))
-		}) { Text("Импортировать вопросы") }
-		if (lastImportOk) Text("Импорт завершён")
+	Scaffold(
+		topBar = {
+			TopAppBar(title = { Text("InterviewCards") })
+		},
+		floatingActionButton = {
+			ExtendedFloatingActionButton(onClick = { launcher.launch(arrayOf("application/json", "text/*")) }) {
+				Text("Импорт")
+			}
+		}
+	) { padding ->
+		if (decks.isEmpty()) {
+			Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+				Text("Нет колод. Нажмите Импорт.")
+			}
+		} else {
+			LazyColumn(
+				modifier = Modifier.fillMaxSize().padding(padding),
+				verticalArrangement = Arrangement.spacedBy(8.dp),
+				contentPadding = PaddingValues(16.dp)
+			) {
+				items(decks) { deck ->
+					ElevatedCard(
+						modifier = Modifier.fillMaxWidth().clickable { onOpenDeck(deck.id) }
+					) {
+						Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+							Column(modifier = Modifier.weight(1f)) {
+								Text(deck.name, style = MaterialTheme.typography.titleMedium)
+								Text("К повторению: ${deck.dueCount}", style = MaterialTheme.typography.bodyMedium)
+							}
+							AssistChip(onClick = { onOpenDeck(deck.id) }, label = { Text("Учить") })
+						}
+					}
+				}
+			}
+		}
 	}
 }

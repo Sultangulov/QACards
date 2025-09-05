@@ -13,6 +13,8 @@ data class Card(
 	val deckId: Long,
 	val question: String,
 	val answer: String,
+	val section: String? = null,
+	val examplesJson: String? = null,
 	val intervalDays: Int = 0,
 	val nextReviewAt: Long = System.currentTimeMillis()
 )
