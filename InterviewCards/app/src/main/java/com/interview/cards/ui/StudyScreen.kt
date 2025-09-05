@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.interview.cards.ui
 
 import androidx.compose.foundation.clickable
