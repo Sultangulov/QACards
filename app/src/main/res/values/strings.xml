@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">QuizPrep</string>
+    <string name="import_questions">Импорт вопросов</string>
+    <string name="decks">Наборы</string>
+    <string name="start_review">Начать повторение</string>
+    <string name="empty_state">Добавьте набор или импортируйте вопросы</string>
+</resources>
+
